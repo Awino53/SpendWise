@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Debts</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <%- include('header.ejs') %>
+    <h1>Debts</h1>
+    <div>
+      <h3>Remaining Debts</h3>
+      <canvas id="debtsBarChart"></canvas>
+    </div>
+
+    <script>
+      const debtData = JSON.parse(
+        "<%= JSON.stringify(debts.map(debt => debt.remainingAmount)) %>"
+      );
+      const debtLabels = JSON.parse(
+        "<%= JSON.stringify(debts.map(debt => debt.category)) %>"
+      );
+
+      /* const debtData = <%- JSON.stringify(debts.map(debt => debt.remainingAmount)) %>;
+    const debtLabels = <%- JSON.stringify(debts.map(debt => debt.category)) %>; */
+
+      const ctx = document.getElementById("debtsBarChart").getContext("2d");
+      new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: debtLabels,
+          datasets: [
+            {
+              label: "Remaining Amount",
+              data: debtData,
+              backgroundColor: "#2196f3",
+            },
+          ],
+        },
+      });
+    </script>
+  </body>
+</html>

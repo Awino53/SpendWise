@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Savings</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <%- include ('header.ejs') %>
+
+    <h1>Savings Goals</h1>
+    <div>
+      <h3>Progress</h3>
+      <canvas id="savingsPieChart"></canvas>
+    </div>
+
+    <script>
+      const savingsData = JSON.parse(
+        "<%= JSON.stringify(goals.map(goal => goal.remainingAmount)) %>"
+      );
+      const savingsLabels = JSON.parse(
+        "<%= JSON.stringify(goals.map(goal => goal.category)) %>"
+      );
+
+      /* const savingsData = <%- JSON.stringify(goals.map(goal => goal.progress)) %>;
+    const savingsLabels = <%- JSON.stringify(goals.map(goal => goal.name)) %>; */
+
+      const ctx = document.getElementById("savingsPieChart").getContext("2d");
+      new Chart(ctx, {
+        type: "pie",
+        data: {
+          labels: savingsLabels,
+          datasets: [
+            {
+              data: savingsData,
+              backgroundColor: ["#4caf50", "#2196f3", "#ff9800", "#f44336"],
+            },
+          ],
+        },
+      });
+    </script>
+  </body>
+</html>
