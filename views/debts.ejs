@@ -7,21 +7,63 @@
   <body>
     <%- include('header.ejs') %>
     <h1>Debts</h1>
+
+    <!-- Form to Add/Edit Debt -->
+    <div>
+      <h3>Add or Edit Debt</h3>
+      <form action="/debts" method="POST">
+        <label for="debtName">Debt Name:</label>
+        <input type="text" id="debtName" name="debtName" required />
+
+        <label for="totalAmount">Total Amount:</label>
+        <input type="number" id="totalAmount" name="totalAmount" required />
+
+        <label for="balance">Balance:</label>
+        <input type="number" id="balance" name="balance" required />
+
+        <label for="category">Category:</label>
+        <select id="category" name="category" required>
+          <% categories.forEach(category => { %>
+          <option value="<%= category.category_id %>">
+            <%= category.name %>
+          </option>
+          <% }) %>
+        </select>
+
+        <button type="submit">Submit</button>
+      </form>
+    </div>
+
+    <!-- Display Existing Debts -->
     <div>
       <h3>Remaining Debts</h3>
       <canvas id="debtsBarChart"></canvas>
+      <ul>
+        <% debts.forEach(debt => { %>
+        <li>
+          <strong><%= debt.debt_name %>:</strong>
+          Total: <%= debt.total_amount %>, Balance: <%= debt.balance %>,
+          Category: <%= debt.category %>
+          <form
+            action="/debts/delete/<%= debt.debt_id %>"
+            method="POST"
+            style="display: inline"
+          >
+            <button type="submit">Delete</button>
+          </form>
+        </li>
+        <% }) %>
+      </ul>
     </div>
 
+    <!-- Chart Script -->
     <script>
       const debtData = JSON.parse(
-        "<%= JSON.stringify(debts.map(debt => debt.remainingAmount)) %>"
+        "<%= JSON.stringify(debts.map(debt => debt.balance)) %>"
       );
       const debtLabels = JSON.parse(
-        "<%= JSON.stringify(debts.map(debt => debt.category)) %>"
+        "<%= JSON.stringify(debts.map(debt => debt.debt_name)) %>"
       );
-
-      /* const debtData = <%- JSON.stringify(debts.map(debt => debt.remainingAmount)) %>;
-    const debtLabels = <%- JSON.stringify(debts.map(debt => debt.category)) %>; */
 
       const ctx = document.getElementById("debtsBarChart").getContext("2d");
       new Chart(ctx, {
@@ -30,7 +72,7 @@
           labels: debtLabels,
           datasets: [
             {
-              label: "Remaining Amount",
+              label: "Remaining Balance",
               data: debtData,
               backgroundColor: "#2196f3",
             },

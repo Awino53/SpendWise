@@ -108,14 +108,25 @@ app.post("/login", (req, res) => {
 
     // If authentication is successful, set the session
     req.session.userId = user.user_id;
-    req.session.userName = user.full_name;  // Store the user's full name in the session
+    req.session.userName = user.full_name; // Store the user's full name in the session
 
     return res.redirect("/"); // Redirect to homepage
   });
 });
 
-/* /* budget overview */
+/* home route */
 app.get("/", (req, res) => {
+  if (req.session.userId) {
+    // Redirect to /transactions if the user is logged in
+    return res.redirect("/transactions");
+  }
+  
+  // Otherwise, render the home page
+  res.render("home");
+});
+
+/* /* budget overview */
+app.get("/transactions", (req, res) => {
   const userId = req.session.userId; // This should now work if the user is logged in
 
   if (!userId) {
@@ -186,11 +197,71 @@ app.get("/", (req, res) => {
         ];
 
         // Render the response, passing the budget data, notifications, and userName to the view
-        res.render("home", { userName, budgetStatus, notifications });
+        res.render("transactions", { userName, budgetStatus, notifications });
       });
     });
   });
 });
+
+// Edit Transaction Route
+app.post("/edit-transaction/:id", (req, res) => {
+  const transactionId = req.params.id;
+  const { description, amount, date } = req.body;
+
+  const updateQuery = `
+    UPDATE transactions
+    SET description = ?, amount = ?, transaction_date = ?
+    WHERE transaction_id = ?;
+  `;
+
+  db.query(updateQuery, [description, amount, date, transactionId], (err, result) => {
+    if (err) {
+      console.error("Error updating transaction:", err);
+      return res.status(500).send("Error updating transaction.");
+    }
+
+    res.redirect("/transactions"); // Redirect back to the overview after editing
+  });
+});
+
+// Delete Transaction Route
+app.post("/delete-transaction/:id", (req, res) => {
+  const transactionId = req.params.id;
+
+  const deleteQuery = `
+    DELETE FROM transactions WHERE transaction_id = ?;
+  `;
+
+  db.query(deleteQuery, [transactionId], (err, result) => {
+    if (err) {
+      console.error("Error deleting transaction:", err);
+      return res.status(500).send("Error deleting transaction.");
+    }
+
+    res.redirect("/transactions"); // Redirect back to the overview after deletion
+  });
+});
+
+// Add Transaction Route (if needed)
+app.post("/add-transaction", (req, res) => {
+  const { description, amount, category_id, transaction_date } = req.body;
+
+  const insertQuery = `
+    INSERT INTO transactions (description, amount, category_id, transaction_date, user_id)
+    VALUES (?, ?, ?, ?, ?);
+  `;
+
+  db.query(insertQuery, [description, amount, category_id, transaction_date, req.session.userId], (err, result) => {
+    if (err) {
+      console.error("Error adding transaction:", err);
+      return res.status(500).send("Error adding transaction.");
+    }
+
+    res.redirect("/transactions"); // Redirect to transactions page after adding
+  });
+});
+
+
 
 /* saving goals progress */
 app.get("/savings", (req, res) => {
@@ -220,25 +291,132 @@ app.get("/savings", (req, res) => {
     });
   });
 });
+/* edit saving goals */
+app.post("/savings", (req, res) => {
+  const { goalName, targetAmount, currentAmount } = req.body;
+  const userId = 1; // Example user
+
+  const insertGoalQuery = `
+    INSERT INTO saving_goals (name, target_amount, user_id)
+    VALUES (?, ?, ?)
+    ON DUPLICATE KEY UPDATE 
+      target_amount = VALUES(target_amount);
+  `;
+
+  const updateSavingsQuery = `
+    INSERT INTO savings (amount, user_id)
+    VALUES (?, ?)
+    ON DUPLICATE KEY UPDATE 
+      amount = VALUES(amount);
+  `;
+
+  db.query(insertGoalQuery, [goalName, targetAmount, userId], (err, result) => {
+    if (err) {
+      console.error("Error adding/updating goal:", err);
+      return res.status(500).send("Error adding/updating goal.");
+    }
+
+    db.query(updateSavingsQuery, [currentAmount, userId], (err) => {
+      if (err) {
+        console.error("Error updating savings:", err);
+        return res.status(500).send("Error updating savings.");
+      }
+      res.redirect("/savings");
+    });
+  });
+});
+
+/* delete saving goals */
+app.post("/savings/delete/:id", (req, res) => {
+  const goalId = req.params.id;
+
+  const deleteGoalQuery = "DELETE FROM saving_goals WHERE goal_id = ?;";
+
+  db.query(deleteGoalQuery, [goalId], (err) => {
+    if (err) {
+      console.error("Error deleting saving goal:", err);
+      return res.status(500).send("Error deleting saving goal.");
+    }
+    res.redirect("/savings");
+  });
+});
 
 /* debt managment */
+ 
 app.get("/debts", (req, res) => {
-  const userId = 1; // Example user
-  const userName = req.session.userName; // Get the userName from session
+  const userId = 1; // Example user ID
+  const userName = req.session?.userName || "Guest"; // Get the userName from session
   const debtsQuery = `
-       SELECT d.debt_name, d.total_amount, d.balance, c.name AS category
-      FROM debts d
-      JOIN categories c ON d.category_id = c.category_id
-      WHERE c.user_id = ?;`;
+       SELECT d.debt_id, d.debt_name, d.total_amount, d.balance, c.name AS category
+       FROM debts d
+       JOIN categories c ON d.category_id = c.category_id
+       WHERE d.user_id = ?;`;
+  const categoriesQuery = `
+       SELECT category_id, name 
+       FROM categories 
+       WHERE user_id = ?;`;
+
+  // Fetch debts and categories in parallel
   db.query(debtsQuery, [userId], (err, debts) => {
     if (err) {
       console.error("Error fetching debts:", err);
       return res.status(500).send("Error fetching debts.");
     }
 
-    res.render("debts", { userName, debts });
+    db.query(categoriesQuery, [userId], (err, categories) => {
+      if (err) {
+        console.error("Error fetching categories:", err);
+        return res.status(500).send("Error fetching categories.");
+      }
+
+      // Render the debts page with debts and categories
+      res.render("debts", { userName, debts, categories });
+    });
   });
 });
+
+/* add or edit debt */
+app.post("/debts", (req, res) => {
+  const { debtName, totalAmount, balance, category } = req.body;
+  const userId = 1; // Example user
+
+  const insertDebtQuery = `
+    INSERT INTO debts (debt_name, total_amount, balance, category_id, user_id)
+    VALUES (?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE 
+      total_amount = VALUES(total_amount),
+      balance = VALUES(balance),
+      category_id = VALUES(category_id);
+  `;
+
+  db.query(
+    insertDebtQuery,
+    [debtName, totalAmount, balance, category, userId],
+    (err) => {
+      if (err) {
+        console.error("Error adding/updating debt:", err);
+        return res.status(500).send("Error adding/updating debt.");
+      }
+      res.redirect("/debts");
+    }
+  );
+});
+
+/* delete debts */
+app.post("/debts/delete/:id", (req, res) => {
+  const debtId = req.params.id;
+
+  const deleteQuery = "DELETE FROM debts WHERE debt_id = ?;";
+
+  db.query(deleteQuery, [debtId], (err) => {
+    if (err) {
+      console.error("Error deleting debt:", err);
+      return res.status(500).send("Error deleting debt.");
+    }
+    res.redirect("/debts");
+  });
+});
+
 
 /* notifications */
 app.get("/notifications", (req, res) => {
