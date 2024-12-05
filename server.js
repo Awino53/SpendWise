@@ -3,6 +3,9 @@ const app = express();
 const mysql = require("mysql");
 const bodyParser = require("body-parser");
 
+const bcrypt = require("bcrypt"); // Import bcrypt
+const SALT_ROUNDS = 10; // Define the number of salt rounds
+
 const session = require("express-session");
 
 app.use(
@@ -40,11 +43,15 @@ app.get("/register", (req, res) => {
 
 // Handle registration
 app.post("/register", (req, res) => {
-  const { email, full_name, password, date_of_birth } = req.body;
+  const { email, full_name, password,confirm_password, date_of_birth } = req.body;
 
-  if (!email || !full_name || !password) {
+  if (!email || !full_name || !password || !confirm_password) {
     // You can add basic validation here if needed, like checking empty fields
     return res.redirect("/register");
+  }
+  // Check if passwords match
+  if (password !== confirm_password) {
+    return res.render("register", { error: "Passwords do not match." }); // You can send an error message to the registration page
   }
 
   const sqlCheckEmail = "SELECT * FROM users WHERE email = ?";
@@ -58,21 +65,29 @@ app.post("/register", (req, res) => {
       return res.redirect("/register"); // Redirect if email is already registered
     }
 
-    const sql =
-      "INSERT INTO users (email, full_name, password, date_of_birth) VALUES (?, ?, ?, ?)";
-    db.query(
-      sql,
-      [email, full_name, password, date_of_birth],
-      (err, result) => {
-        if (err) {
-          console.error("Error during registration:", err);
-          return res.redirect("/register"); // Redirect on error
-        }
-
-        req.session.userId = result.insertId;
-        res.redirect("/"); // Redirect to home page after successful registration
+    // Hash the password before saving
+    bcrypt.hash(password, SALT_ROUNDS, (err, hashedPassword) => {
+      if (err) {
+        console.error("Error hashing password:", err);
+        return res.redirect("/register");
       }
-    );
+
+      const sql =
+        "INSERT INTO users (email, full_name, password, date_of_birth) VALUES (?, ?, ?, ?)";
+      db.query(
+        sql,
+        [email, full_name, hashedPassword, date_of_birth], // Use the hashedPassword here
+        (err, result) => {
+          if (err) {
+            console.error("Error during registration:", err);
+            return res.redirect("/register"); // Redirect on error
+          }
+
+          req.session.userId = result.insertId;
+          res.redirect("/"); // Redirect to home page after successful registration
+        }
+      );
+    });
   });
 });
 
@@ -81,17 +96,17 @@ app.get("/login", (req, res) => {
   res.render("login"); // Render the login form
 });
 
+// Handle login
 app.post("/login", (req, res) => {
   const { email, password } = req.body;
 
-  // Check if both email and password are provided
   if (!email || !password) {
     return res.render("login", { error: "Email and password are required." });
   }
 
-  // Proceed with your authentication logic (e.g., check the database)
   db.query("SELECT * FROM users WHERE email = ?", [email], (err, results) => {
     if (err) {
+      console.error("Error during authentication:", err);
       return res.status(500).send("Error during authentication.");
     }
 
@@ -101,16 +116,23 @@ app.post("/login", (req, res) => {
 
     const user = results[0];
 
-    // You should hash and compare passwords, but here's a simple check
-    if (user.password !== password) {
-      return res.render("login", { error: "Invalid credentials." });
-    }
+    // Compare the hashed password
+    bcrypt.compare(password, user.password, (err, isMatch) => {
+      if (err) {
+        console.error("Error comparing passwords:", err);
+        return res.status(500).send("Error during authentication.");
+      }
 
-    // If authentication is successful, set the session
-    req.session.userId = user.user_id;
-    req.session.userName = user.full_name; // Store the user's full name in the session
+      if (!isMatch) {
+        return res.render("login", { error: "Invalid credentials." });
+      }
 
-    return res.redirect("/"); // Redirect to homepage
+      // If authentication is successful, set the session
+      req.session.userId = user.user_id;
+      req.session.userName = user.full_name;
+
+      return res.redirect("/");
+    });
   });
 });
 
@@ -120,7 +142,7 @@ app.get("/", (req, res) => {
     // Redirect to /transactions if the user is logged in
     return res.redirect("/transactions");
   }
-  
+
   // Otherwise, render the home page
   res.render("home");
 });
@@ -214,14 +236,18 @@ app.post("/edit-transaction/:id", (req, res) => {
     WHERE transaction_id = ?;
   `;
 
-  db.query(updateQuery, [description, amount, date, transactionId], (err, result) => {
-    if (err) {
-      console.error("Error updating transaction:", err);
-      return res.status(500).send("Error updating transaction.");
-    }
+  db.query(
+    updateQuery,
+    [description, amount, date, transactionId],
+    (err, result) => {
+      if (err) {
+        console.error("Error updating transaction:", err);
+        return res.status(500).send("Error updating transaction.");
+      }
 
-    res.redirect("/transactions"); // Redirect back to the overview after editing
-  });
+      res.redirect("/transactions"); // Redirect back to the overview after editing
+    }
+  );
 });
 
 // Delete Transaction Route
@@ -251,17 +277,19 @@ app.post("/add-transaction", (req, res) => {
     VALUES (?, ?, ?, ?, ?);
   `;
 
-  db.query(insertQuery, [description, amount, category_id, transaction_date, req.session.userId], (err, result) => {
-    if (err) {
-      console.error("Error adding transaction:", err);
-      return res.status(500).send("Error adding transaction.");
+  db.query(
+    insertQuery,
+    [description, amount, category_id, transaction_date, req.session.userId],
+    (err, result) => {
+      if (err) {
+        console.error("Error adding transaction:", err);
+        return res.status(500).send("Error adding transaction.");
+      }
+
+      res.redirect("/transactions"); // Redirect to transactions page after adding
     }
-
-    res.redirect("/transactions"); // Redirect to transactions page after adding
-  });
+  );
 });
-
-
 
 /* saving goals progress */
 app.get("/savings", (req, res) => {
@@ -342,7 +370,7 @@ app.post("/savings/delete/:id", (req, res) => {
 });
 
 /* debt managment */
- 
+
 app.get("/debts", (req, res) => {
   const userId = 1; // Example user ID
   const userName = req.session?.userName || "Guest"; // Get the userName from session
@@ -417,7 +445,6 @@ app.post("/debts/delete/:id", (req, res) => {
   });
 });
 
-
 /* notifications */
 app.get("/notifications", (req, res) => {
   const notifications = [
@@ -427,6 +454,35 @@ app.get("/notifications", (req, res) => {
   ];
 
   res.render("notifications", { notifications });
+});
+
+//footer landing page
+app.get("/terms", (req, res) => {
+  res.render("terms.ejs");
+});
+app.get("/policy", (req, res) => {
+  res.render("policy.ejs");
+});
+app.get("/contact", (req, res) => {
+  res.render("contact.ejs");
+});
+app.get("/faqs", (req, res) => {
+  res.render("faqs.ejs");
+});
+ 
+/* settings */
+app.get("/settings", (req, res) => {
+  const userName = req.session.userName || "Guest"; // Fallback if undefined
+  //const userName = req.session.userName; // Get the userName from session
+  res.render("settings.ejs", { userName });
+});
+
+/* notifications */
+app.get("/notifications", (req, res) => {
+  console.log("Session data in /notifications:", req.session); // Debugging log
+  const userName = req.session.userName || "Guest"; // Fallback if undefined
+  //const userName = req.session.userName; // Get the userName from session
+  res.render("notifications.ejs", { userName });
 });
 
 // Logout route

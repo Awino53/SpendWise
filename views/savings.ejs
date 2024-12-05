@@ -5,10 +5,27 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
   <body>
-    <%- include('header.ejs') %>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: azure;
+      }
+      .display{
+        text-align: center;
+      }
+      .savings{
+        padding: 40px;
+        margin-top: 150px;
+      }
+    </style>
+    <div class="display">
+      <%- include('header.ejs') %>
 
-    <h1>Savings Goals</h1>
-    <!-- Form to Add/Edit Savings Goal -->
+      <h1>Savings Goals</h1>
+    </div>
+
+    <div class="savings">
+       <!-- Form to Add/Edit Savings Goal -->
     <div>
       <h3>Add or Edit Savings Goal</h3>
       <form action="/savings" method="POST">
@@ -70,5 +87,9 @@
         },
       });
     </script>
+
+    </div>
+
+   
   </body>
 </html>

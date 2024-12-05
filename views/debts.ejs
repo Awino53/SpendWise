@@ -5,10 +5,26 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
   <body>
-    <%- include('header.ejs') %>
-    <h1>Debts</h1>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: azure;
+      }
+      .display{
+        text-align: center;
+      }
+      .debts{
+        padding: 40px;
+        margin-top: 150px;
+      }
+    </style>
+    <div class="display">
+      <%- include('header.ejs') %>
+      <h1>Debts</h1>
+    </div>
 
-    <!-- Form to Add/Edit Debt -->
+    <div class="debts">
+      <!-- Form to Add/Edit Debt -->
     <div>
       <h3>Add or Edit Debt</h3>
       <form action="/debts" method="POST">
@@ -80,5 +96,9 @@
         },
       });
     </script>
+
+    </div>
+
+    
   </body>
 </html>
