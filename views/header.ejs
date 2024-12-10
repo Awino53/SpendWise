@@ -5,27 +5,40 @@
     <a href="/savings">Savings</a>
     <a href="/debts">Debts</a>
   </nav>
-  <h1>Welcome, <%= userName %>!</h1>
-   
+  <h1>Welcome, <%= user.fullName %>!</h1>
 </header>
 <style>
-    
-     a{
-        text-decoration: none;
-        color: rgb(30, 111, 30);
-        font-size: 1.3rem;
-        font-weight: bold;
-        padding: 10px;
-        position: relative;
-        top: 70px;
-         
-    
-        
-     }
-     h1{
-        color: rgb(30, 111, 30);
-        position: relative;
-        top: 130px;
-     }
-</style>
+  /* General header styles */
+  header {
+    background-color: azure; /* Light green background */
+    padding: 20px;
+    text-align: center; /* Centers the content */
+  }
 
+  nav {
+    margin-bottom: 20px; /* Adds space between nav and the heading */
+  }
+
+  a {
+    text-decoration: none;
+    color: rgb(30, 111, 30); /* Dark green color for links */
+    font-size: 1.3rem;
+    font-weight: bold;
+    padding: 10px;
+    margin: 0 15px; /* Adds space between the links */
+    border-radius: 5px; /* Rounds the corners of links */
+    transition: background-color 0.3s ease; /* Smooth background transition on hover */
+  }
+
+  a:hover {
+    background-color: #4c8c4a; /* Darker green on hover */
+    color: white; /* White text on hover */
+  }
+
+  h1 {
+    color: rgb(55, 210, 55); /* Dark green color for the heading */
+    font-size: 2rem; /* Adjusted size for the heading */
+    margin-top: 20px; /* Adds space above the heading */
+    font-weight: normal; /* Normalizes the weight of the heading */
+  }
+</style>

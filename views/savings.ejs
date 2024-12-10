@@ -1,95 +1,48 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <title>Savings</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  </head>
-  <body>
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        background-color: azure;
-      }
-      .display{
-        text-align: center;
-      }
-      .savings{
-        padding: 40px;
-        margin-top: 150px;
-      }
-    </style>
-    <div class="display">
-      <%- include('header.ejs') %>
-
-      <h1>Savings Goals</h1>
-    </div>
-
-    <div class="savings">
-       <!-- Form to Add/Edit Savings Goal -->
-    <div>
-      <h3>Add or Edit Savings Goal</h3>
-      <form action="/savings" method="POST">
-        <label for="goalName">Goal Name:</label>
-        <input type="text" id="goalName" name="goalName" required />
-
-        <label for="targetAmount">Target Amount:</label>
-        <input type="number" id="targetAmount" name="targetAmount" required />
-
-        <label for="currentAmount">Current Amount:</label>
-        <input type="number" id="currentAmount" name="currentAmount" required />
-
-        <button type="submit">Submit</button>
-      </form>
-    </div>
-
-    <!-- Display Savings Goals -->
-    <div>
-      <h3>Progress</h3>
-      <canvas id="savingsPieChart"></canvas>
-      <ul>
-        <% goals.forEach(goal => { %>
-        <li>
-          <strong><%= goal.name %>:</strong>
-          Target: <%= goal.target_amount %>, Progress: <%=
-          goal.progress.toFixed(2) %>%
-          <form
-            action="/savings/delete/<%= goal.goal_id %>"
-            method="POST"
-            style="display: inline"
-          >
-            <button type="submit">Delete</button>
-          </form>
-        </li>
-        <% }) %>
-      </ul>
-    </div>
-
-    <!-- Chart Script -->
-    <script>
-      const savingsData = JSON.parse(
-        "<%= JSON.stringify(goals.map(goal => goal.progress)) %>"
-      );
-      const savingsLabels = JSON.parse(
-        "<%= JSON.stringify(goals.map(goal => goal.name)) %>"
-      );
-
-      const ctx = document.getElementById("savingsPieChart").getContext("2d");
-      new Chart(ctx, {
-        type: "pie",
-        data: {
-          labels: savingsLabels,
-          datasets: [
-            {
-              data: savingsData,
-              backgroundColor: ["#4caf50", "#2196f3", "#ff9800", "#f44336"],
-            },
-          ],
-        },
-      });
-    </script>
-
-    </div>
-
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="/main.css">
+  <title>Savings</title>
+</head>
+<body>
    
-  </body>
+  <!-- <header>
+    <h1>Savings</h1>
+  </header> -->
+  <div class="header">
+    <!-- Include the shared header -->
+  <%- include('header.ejs') %>
+  </div>
+  <h1>Savings</h1>
+  <!-- Table for Savings -->
+  <section>
+    <table>
+      <thead>
+        <tr>
+          <th>Description</th>
+          <th>Amount (ksh)</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% savings.forEach(saving => { %>
+          <tr>
+            <td><%= saving.description %></td>
+            <td><%= saving.amount %></td>
+            <td><%= saving.date %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </section>
+
+  <footer>
+    <a href="/transactions">View Transactions</a> | 
+    <a href="/debts">View Debts</a> | 
+    <a href="/logout">Logout</a>
+  </footer>
+   
+</body>
 </html>

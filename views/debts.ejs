@@ -1,104 +1,125 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
-    <title>Debts</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/main.css" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <title>Debts</title>
   </head>
   <body>
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        background-color: azure;
-      }
-      .display{
-        text-align: center;
-      }
-      .debts{
-        padding: 40px;
-        margin-top: 150px;
-      }
-    </style>
-    <div class="display">
+    <div class="header">
+      <!-- Include the shared header -->
       <%- include('header.ejs') %>
-      <h1>Debts</h1>
     </div>
+    <h1>debts</h1>
 
-    <div class="debts">
-      <!-- Form to Add/Edit Debt -->
-    <div>
-      <h3>Add or Edit Debt</h3>
-      <form action="/debts" method="POST">
-        <label for="debtName">Debt Name:</label>
-        <input type="text" id="debtName" name="debtName" required />
-
-        <label for="totalAmount">Total Amount:</label>
-        <input type="number" id="totalAmount" name="totalAmount" required />
-
-        <label for="balance">Balance:</label>
-        <input type="number" id="balance" name="balance" required />
-
-        <label for="category">Category:</label>
-        <select id="category" name="category" required>
-          <% categories.forEach(category => { %>
-          <option value="<%= category.category_id %>">
-            <%= category.name %>
-          </option>
+    <!-- Table for Debts -->
+    <section>
+      <table>
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th>Amount (ksh)</th>
+            <th>Balance</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% debts.forEach(debt => { %>
+          <tr>
+            <td><%= debt.description %></td>
+            <td><%= debt.amount %></td>
+            <td><%= debt.balance %></td>
+            <td><%= debt.date %></td>
+          </tr>
           <% }) %>
-        </select>
+        </tbody>
+      </table>
+    </section>
+    <section>
+      <h2>Debt Distribution</h2>
+      <canvas id="debtChart" width="400" height="400"></canvas>
+    </section>
 
-        <button type="submit">Submit</button>
-      </form>
-    </div>
+    <footer>
+      <a href="/transactions">View Transactions</a> |
+      <a href="/savings">View Savings</a> |
+      <a href="/logout">Logout</a>
+    </footer>
+ 
 
-    <!-- Display Existing Debts -->
-    <div>
-      <h3>Remaining Debts</h3>
-      <canvas id="debtsBarChart"></canvas>
-      <ul>
-        <% debts.forEach(debt => { %>
-        <li>
-          <strong><%= debt.debt_name %>:</strong>
-          Total: <%= debt.total_amount %>, Balance: <%= debt.balance %>,
-          Category: <%= debt.category %>
-          <form
-            action="/debts/delete/<%= debt.debt_id %>"
-            method="POST"
-            style="display: inline"
-          >
-            <button type="submit">Delete</button>
-          </form>
-        </li>
-        <% }) %>
-      </ul>
-    </div>
-
-    <!-- Chart Script -->
     <script>
-      const debtData = JSON.parse(
-        "<%= JSON.stringify(debts.map(debt => debt.balance)) %>"
+      // Predefine the data from the server-side in the script
+      const debtDescriptions = JSON.parse(
+        "<%- JSON.stringify(debts.map(debt => debt.description)) %>"
       );
-      const debtLabels = JSON.parse(
-        "<%= JSON.stringify(debts.map(debt => debt.debt_name)) %>"
+      const debtAmounts = JSON.parse(
+        "<%- JSON.stringify(debts.map(debt => debt.amount)) %>"
+      );
+      const debtBalances = JSON.parse(
+        "<%- JSON.stringify(debts.map(debt => debt.balance)) %>"
       );
 
-      const ctx = document.getElementById("debtsBarChart").getContext("2d");
-      new Chart(ctx, {
-        type: "bar",
-        data: {
-          labels: debtLabels,
-          datasets: [
-            {
-              label: "Remaining Balance",
-              data: debtData,
-              backgroundColor: "#2196f3",
-            },
-          ],
-        },
+      console.log(debtDescriptions); // Check the descriptions
+      console.log(debtBalances); // Check the balances
+      console.log(debtAmounts); // Check the amounts
+      // Data for chart
+      const debtData = {
+        labels: debtDescriptions,
+        datasets: [
+          {
+            label: "Debt Amounts",
+            data: debtBalances, // Show remaining balance for each debt
+            backgroundColor: [
+              "rgba(255, 99, 132, 0.2)",
+              "rgba(54, 162, 235, 0.2)",
+              "rgba(255, 206, 86, 0.2)",
+              "rgba(75, 192, 192, 0.2)",
+              "rgba(153, 102, 255, 0.2)",
+              "rgba(255, 159, 64, 0.2)",
+            ],
+            borderColor: [
+              "rgba(255, 99, 132, 1)",
+              "rgba(54, 162, 235, 1)",
+              "rgba(255, 206, 86, 1)",
+              "rgba(75, 192, 192, 1)",
+              "rgba(153, 102, 255, 1)",
+              "rgba(255, 159, 64, 1)",
+            ],
+            borderWidth: 1,
+          },
+          {
+            label: "Paid Amounts",
+            data: debtAmounts.map((amount) => amount - debtBalances), // Calculate paid amounts
+            backgroundColor: [
+              "rgba(255, 99, 132, 0.5)",
+              "rgba(54, 162, 235, 0.5)",
+              "rgba(255, 206, 86, 0.5)",
+              "rgba(75, 192, 192, 0.5)",
+              "rgba(153, 102, 255, 0.5)",
+              "rgba(255, 159, 64, 0.5)",
+            ],
+            borderColor: [
+              "rgba(255, 99, 132, 1)",
+              "rgba(54, 162, 235, 1)",
+              "rgba(255, 206, 86, 1)",
+              "rgba(75, 192, 192, 1)",
+              "rgba(153, 102, 255, 1)",
+              "rgba(255, 159, 64, 1)",
+            ],
+            borderWidth: 1,
+          },
+        ],
+      };
+
+      // Render the chart with updated data
+      const ctx = document.getElementById("debtChart").getContext("2d");
+      const debtChart = new Chart(ctx, {
+        type: "pie",
+        data: debtData,
       });
     </script>
-
-    </div>
-
-    
   </body>
 </html>

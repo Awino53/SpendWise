@@ -26,7 +26,7 @@ const db = mysql.createConnection({
   host: "localhost",
   user: "root",
   password: "",
-  database: "App",
+  database: "WiseApp",
 });
 
 db.connect((err) => {
@@ -34,6 +34,13 @@ db.connect((err) => {
   console.log("MySQL Connected...");
 });
 
+// Middleware to check if a user is logged in
+function isAuthenticated(req, res, next) {
+  if (!req.session.userId) {
+    return res.redirect("/login");
+  }
+  next();
+}
 // Routes
 
 // Register route
@@ -43,7 +50,8 @@ app.get("/register", (req, res) => {
 
 // Handle registration
 app.post("/register", (req, res) => {
-  const { email, full_name, password,confirm_password, date_of_birth } = req.body;
+  const { email, full_name, password, confirm_password, date_of_birth } =
+    req.body;
 
   if (!email || !full_name || !password || !confirm_password) {
     // You can add basic validation here if needed, like checking empty fields
@@ -147,313 +155,130 @@ app.get("/", (req, res) => {
   res.render("home");
 });
 
-/* /* budget overview */
-app.get("/transactions", (req, res) => {
-  const userId = req.session.userId; // This should now work if the user is logged in
+// View Transactions
 
-  if (!userId) {
-    // If no userId is found, redirect to login page or show an error
-    return res.redirect("/login");
+// Add Transaction Page (GET request)
+app.get("/transactions", isAuthenticated, (req, res) => {
+  const userId = req.session.userId;
+
+  // Fetch transactions
+  const transactionQuery = "SELECT * FROM transactions WHERE user_id = ?";
+  db.query(transactionQuery, [userId], (err, transactions) => {
+    if (err) return res.status(500).send("Error fetching transactions.");
+
+    // Fetch debts
+    const debtQuery =
+      "SELECT * FROM transactions WHERE user_id = ? AND type = 'DEBT'";
+    db.query(debtQuery, [userId], (err, debts) => {
+      if (err) return res.status(500).send("Error fetching debts.");
+
+      const user = { fullName: req.session.userName }; // Add user data
+      res.render("transactions", { transactions, debts, user }); // Pass debts to view
+    });
+  });
+});
+
+// Add Transaction
+
+// Add Transaction (POST request)
+app.post("/transactions", isAuthenticated, (req, res) => {
+  const {
+    type,
+    category,
+    amount,
+    description,
+    transaction_date,
+    is_recurrent,
+    debt_id,
+  } = req.body;
+
+  // Validate type
+  if (
+    !type ||
+    !["EXPENSE", "INCOME", "SAVING", "DEBT"].includes(type.toUpperCase())
+  ) {
+    return res.status(400).send("Invalid transaction type.");
   }
 
-  // SQL query to get the user's name
-  const userQuery = `
-    SELECT full_name FROM users WHERE user_id = ?
+  const userId = req.session.userId;
+
+  let query = `
+    INSERT INTO transactions (user_id, type, category, amount, description, transaction_date, is_recurrent
   `;
-
-  // SQL query to get budget data
-  const budgetQuery = `
-    SELECT c.name AS category, 
-           COALESCE(SUM(t.amount), 0) AS amount,
-           c.category_id
-    FROM categories c
-    LEFT JOIN transactions t ON c.category_id = t.category_id
-    WHERE c.user_id = ?
-    GROUP BY c.name, c.category_id;
-  `;
-
-  // SQL query to get transactions data (updated to use correct field names)
-  const transactionsQuery = `
-    SELECT t.transaction_id, t.description, t.amount, t.transaction_date AS date, t.category_id
-    FROM transactions t
-    WHERE t.category_id IN (
-      SELECT category_id FROM categories WHERE user_id = ?
-    );
-  `;
-
-  // Get the user's full name from the database
-  db.query(userQuery, [userId], (err, userResult) => {
-    if (err) {
-      console.error("Error fetching user data:", err);
-      return res.status(500).send("Error fetching user data.");
-    }
-
-    const userName = userResult[0]?.full_name || "Guest"; // Use 'Guest' if no name is found
-
-    // Make sure to pass userId as part of the query parameters
-    db.query(budgetQuery, [userId], (err, budgetResults) => {
-      if (err) {
-        console.error("Error fetching budget data:", err);
-        return res.status(500).send("Error fetching budget data.");
-      }
-
-      db.query(transactionsQuery, [userId], (err, transactionResults) => {
-        if (err) {
-          console.error("Error fetching transactions:", err);
-          return res.status(500).send("Error fetching transactions.");
-        }
-
-        // Process the results and map them for rendering
-        const budgetStatus = budgetResults.map((category) => ({
-          category: category.category,
-          amount: category.amount,
-          transactions: transactionResults.filter(
-            (t) => t.category_id === category.category_id
-          ),
-        }));
-
-        // Sample notifications
-        const notifications = [
-          { message: "You have a recurring bill due tomorrow.", type: "bill" },
-          { message: "Debt repayment deadline approaching.", type: "debt" },
-        ];
-
-        // Render the response, passing the budget data, notifications, and userName to the view
-        res.render("transactions", { userName, budgetStatus, notifications });
-      });
-    });
-  });
-});
-
-// Edit Transaction Route
-app.post("/edit-transaction/:id", (req, res) => {
-  const transactionId = req.params.id;
-  const { description, amount, date } = req.body;
-
-  const updateQuery = `
-    UPDATE transactions
-    SET description = ?, amount = ?, transaction_date = ?
-    WHERE transaction_id = ?;
-  `;
-
-  db.query(
-    updateQuery,
-    [description, amount, date, transactionId],
-    (err, result) => {
-      if (err) {
-        console.error("Error updating transaction:", err);
-        return res.status(500).send("Error updating transaction.");
-      }
-
-      res.redirect("/transactions"); // Redirect back to the overview after editing
-    }
-  );
-});
-
-// Delete Transaction Route
-app.post("/delete-transaction/:id", (req, res) => {
-  const transactionId = req.params.id;
-
-  const deleteQuery = `
-    DELETE FROM transactions WHERE transaction_id = ?;
-  `;
-
-  db.query(deleteQuery, [transactionId], (err, result) => {
-    if (err) {
-      console.error("Error deleting transaction:", err);
-      return res.status(500).send("Error deleting transaction.");
-    }
-
-    res.redirect("/transactions"); // Redirect back to the overview after deletion
-  });
-});
-
-// Add Transaction Route (if needed)
-app.post("/add-transaction", (req, res) => {
-  const { description, amount, category_id, transaction_date } = req.body;
-
-  const insertQuery = `
-    INSERT INTO transactions (description, amount, category_id, transaction_date, user_id)
-    VALUES (?, ?, ?, ?, ?);
-  `;
-
-  db.query(
-    insertQuery,
-    [description, amount, category_id, transaction_date, req.session.userId],
-    (err, result) => {
-      if (err) {
-        console.error("Error adding transaction:", err);
-        return res.status(500).send("Error adding transaction.");
-      }
-
-      res.redirect("/transactions"); // Redirect to transactions page after adding
-    }
-  );
-});
-
-/* saving goals progress */
-app.get("/savings", (req, res) => {
-  const userId = 1; // Example user
-  const userName = req.session.userName; // Get the userName from session
-  const savingsQuery = `SELECT * FROM savings WHERE user_id = ?`;
-  const goalsQuery = `
-      SELECT sg.name, sg.target_amount, 
-      (s.amount / sg.target_amount) * 100 AS progress
-      FROM saving_goals sg
-      LEFT JOIN savings s ON sg.savings_id = s.savings_id
-      WHERE s.user_id = ?`;
-
-  db.query(savingsQuery, [userId], (err, savings) => {
-    if (err) {
-      console.error("Error fetching savings:", err);
-      return res.status(500).send("Error fetching savings data.");
-    }
-
-    db.query(goalsQuery, [userId], (err, goals) => {
-      if (err) {
-        console.error("Error fetching savings goals:", err);
-        return res.status(500).send("Error fetching savings goals.");
-      }
-
-      res.render("savings", { userName, savings, goals });
-    });
-  });
-});
-/* edit saving goals */
-app.post("/savings", (req, res) => {
-  const { goalName, targetAmount, currentAmount } = req.body;
-  const userId = 1; // Example user
-
-  const insertGoalQuery = `
-    INSERT INTO saving_goals (name, target_amount, user_id)
-    VALUES (?, ?, ?)
-    ON DUPLICATE KEY UPDATE 
-      target_amount = VALUES(target_amount);
-  `;
-
-  const updateSavingsQuery = `
-    INSERT INTO savings (amount, user_id)
-    VALUES (?, ?)
-    ON DUPLICATE KEY UPDATE 
-      amount = VALUES(amount);
-  `;
-
-  db.query(insertGoalQuery, [goalName, targetAmount, userId], (err, result) => {
-    if (err) {
-      console.error("Error adding/updating goal:", err);
-      return res.status(500).send("Error adding/updating goal.");
-    }
-
-    db.query(updateSavingsQuery, [currentAmount, userId], (err) => {
-      if (err) {
-        console.error("Error updating savings:", err);
-        return res.status(500).send("Error updating savings.");
-      }
-      res.redirect("/savings");
-    });
-  });
-});
-
-/* delete saving goals */
-app.post("/savings/delete/:id", (req, res) => {
-  const goalId = req.params.id;
-
-  const deleteGoalQuery = "DELETE FROM saving_goals WHERE goal_id = ?;";
-
-  db.query(deleteGoalQuery, [goalId], (err) => {
-    if (err) {
-      console.error("Error deleting saving goal:", err);
-      return res.status(500).send("Error deleting saving goal.");
-    }
-    res.redirect("/savings");
-  });
-});
-
-/* debt managment */
-
-app.get("/debts", (req, res) => {
-  const userId = 1; // Example user ID
-  const userName = req.session?.userName || "Guest"; // Get the userName from session
-  const debtsQuery = `
-       SELECT d.debt_id, d.debt_name, d.total_amount, d.balance, c.name AS category
-       FROM debts d
-       JOIN categories c ON d.category_id = c.category_id
-       WHERE d.user_id = ?;`;
-  const categoriesQuery = `
-       SELECT category_id, name 
-       FROM categories 
-       WHERE user_id = ?;`;
-
-  // Fetch debts and categories in parallel
-  db.query(debtsQuery, [userId], (err, debts) => {
-    if (err) {
-      console.error("Error fetching debts:", err);
-      return res.status(500).send("Error fetching debts.");
-    }
-
-    db.query(categoriesQuery, [userId], (err, categories) => {
-      if (err) {
-        console.error("Error fetching categories:", err);
-        return res.status(500).send("Error fetching categories.");
-      }
-
-      // Render the debts page with debts and categories
-      res.render("debts", { userName, debts, categories });
-    });
-  });
-});
-
-/* add or edit debt */
-app.post("/debts", (req, res) => {
-  const { debtName, totalAmount, balance, category } = req.body;
-  const userId = 1; // Example user
-
-  const insertDebtQuery = `
-    INSERT INTO debts (debt_name, total_amount, balance, category_id, user_id)
-    VALUES (?, ?, ?, ?, ?)
-    ON DUPLICATE KEY UPDATE 
-      total_amount = VALUES(total_amount),
-      balance = VALUES(balance),
-      category_id = VALUES(category_id);
-  `;
-
-  db.query(
-    insertDebtQuery,
-    [debtName, totalAmount, balance, category, userId],
-    (err) => {
-      if (err) {
-        console.error("Error adding/updating debt:", err);
-        return res.status(500).send("Error adding/updating debt.");
-      }
-      res.redirect("/debts");
-    }
-  );
-});
-
-/* delete debts */
-app.post("/debts/delete/:id", (req, res) => {
-  const debtId = req.params.id;
-
-  const deleteQuery = "DELETE FROM debts WHERE debt_id = ?;";
-
-  db.query(deleteQuery, [debtId], (err) => {
-    if (err) {
-      console.error("Error deleting debt:", err);
-      return res.status(500).send("Error deleting debt.");
-    }
-    res.redirect("/debts");
-  });
-});
-
-/* notifications */
-app.get("/notifications", (req, res) => {
-  const notifications = [
-    { message: "You have a recurring bill due tomorrow.", type: "bill" },
-    { message: "Debt repayment deadline approaching.", type: "debt" },
-    { message: 'You are over budget in the "Rent" category.', type: "budget" },
+  let params = [
+    userId,
+    type,
+    category,
+    amount,
+    description,
+    transaction_date,
+    is_recurrent || 0,
   ];
 
-  res.render("notifications", { notifications });
+  // If it's a debt payment, include debt_id in the query
+  if (debt_id) {
+    query += ", debt_id";
+    params.push(debt_id);
+  }
+
+  query += ") VALUES (?, ?, ?, ?, ?, ?, ?)";
+
+  db.query(query, params, (err) => {
+    if (err) return res.status(500).send("Error adding transaction.");
+    res.redirect("/transactions");
+  });
+});
+
+//delete transaction
+app.delete("/transactions/:id", isAuthenticated, (req, res) => {
+  const { id } = req.params;
+  const userId = req.session.userId;
+  const query =
+    "DELETE FROM transactions WHERE transaction_id = ? AND user_id = ?";
+
+  db.query(query, [id, userId], (err) => {
+    if (err) return res.status(500).send("Error deleting transaction.");
+    res.status(200).send({ success: true });
+  });
+});
+
+// View Savings
+app.get("/savings", isAuthenticated, (req, res) => {
+  const userId = req.session.userId;
+  const query =
+    "SELECT * FROM transactions WHERE user_id = ? AND type = 'SAVING'";
+  db.query(query, [userId], (err, results) => {
+    if (err) return res.status(500).send("Error fetching savings.");
+    const user = { fullName: req.session.userName }; // Add user data here
+    res.render("savings", { savings: results, user });
+  });
+});
+
+// View Debts
+
+app.get("/debts", isAuthenticated, (req, res) => {
+  const userId = req.session.userId;
+  const query = `
+    SELECT 
+      t.transaction_id,
+      t.description, 
+      t.amount, 
+      (t.amount - IFNULL(SUM(tp.amount), 0)) AS balance, 
+      t.transaction_date AS date
+    FROM transactions t
+    LEFT JOIN transactions tp 
+      ON t.transaction_id = tp.transaction_id 
+      AND tp.type = 'DEBT_PAYMENT'
+    WHERE t.user_id = ? AND t.type = 'DEBT'
+    GROUP BY t.transaction_id;
+  `;
+
+  db.query(query, [userId], (err, results) => {
+    if (err) return res.status(500).send("Error fetching debts.");
+    console.log(results); // Add this line to log the results
+    const user = { fullName: req.session.userName }; // Include user data
+    res.render("debts", { debts: results, user });
+  });
 });
 
 //footer landing page
@@ -469,7 +294,7 @@ app.get("/contact", (req, res) => {
 app.get("/faqs", (req, res) => {
   res.render("faqs.ejs");
 });
- 
+
 /* settings */
 app.get("/settings", (req, res) => {
   const userName = req.session.userName || "Guest"; // Fallback if undefined
