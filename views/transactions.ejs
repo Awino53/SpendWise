@@ -5,35 +5,44 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="/main.css" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.1/css/all.min.css">
-    <link rel="stylesheet" href="">
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.1/css/all.min.css"
+    />
+    <link rel="stylesheet" href="" />
     <title>Transactions</title>
   </head>
   <body>
     <div class="logo-container">
       <div class="image">
-        <img src="/Dark_Green_Modern_Initial_Logo-removebg-preview (2.png" alt="Logo" class="logo" />
-        
+        <img
+          src="/Dark_Green_Modern_Initial_Logo-removebg-preview (2.png"
+          alt="Logo"
+          class="logo"
+        />
       </div>
-      
-      
-    
+
       <div class="settings">
         <div class="logout">
           <a href="/logout">Logout</a>
         </div>
         <div class="icons">
-          <a href="/settings" class="icon"><i class="fa-solid fa-gear fa-lg"></i></a>
-          <a href="/notifications" class="icon"><i class="fa-solid fa-bell fa-lg"></i></a>
+          <a href="/settings" class="icon"
+            ><i class="fa-solid fa-gear fa-lg"></i
+          ></a>
+          <a href="/notifications" class="icon"
+            ><i class="fa-solid fa-bell fa-lg"></i
+          ></a>
         </div>
       </div>
     </div>
-    <div class="header">
-      <%- include('header.ejs') %>
-    </div>
+    <div class="header"><%- include('header.ejs') %></div>
     <h1 class="page-title">Transactions</h1>
-    <button id="addTransactionBtn" class="add-transaction-btn">Add Transaction</button>
+    <button id="addTransactionBtn" class="add-transaction-btn">
+      Add Transaction
+    </button>
 
+    
     <!-- Add Transaction Modal -->
     <div id="addTransactionModal" class="modal" style="display: none">
       <div class="modal-content">
@@ -44,7 +53,7 @@
             <option value="EXPENSE">Expense</option>
             <option value="INCOME">Income</option>
             <option value="SAVING">Savings</option>
-            <option value="DEBT">Debts</option>
+            <option value="DEBT_PAYMENT">Debts</option>
           </select>
           <label for="category">Category:</label>
           <input type="text" name="category" id="category" required />
@@ -53,14 +62,26 @@
           <label for="amount">Amount:</label>
           <input type="number" name="amount" id="amount" required />
           <label for="transaction_date">Date:</label>
-          <input type="date" name="transaction_date" id="transaction_date" required />
+          <input
+            type="date"
+            name="transaction_date"
+            id="transaction_date"
+            required
+          />
           <label for="is_recurrent">Recurrent:</label>
-          <input type="checkbox" name="is_recurrent" id="is_recurrent" value="1" />
+          <input
+            type="checkbox"
+            name="is_recurrent"
+            id="is_recurrent"
+            value="1"
+          />
           <label for="debt_id">Debt:</label>
           <select name="debt_id" id="debt_id">
             <option value="">Select Debt</option>
             <% debts.forEach(debt => { %>
-              <option value="<%= debt.transaction_id %>"><%= debt.description %></option>
+            <option value="<%= debt.transaction_id %>">
+              <%= debt.description %>
+            </option>
             <% }); %>
           </select>
           <button type="submit">Add Transaction</button>
@@ -77,6 +98,7 @@
             <th>Description</th>
             <th>Amount (Ksh)</th>
             <th>Date</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -85,8 +107,17 @@
             <td><%= transaction.type %></td>
             <td><%= transaction.description %></td>
             <td><%= transaction.amount %></td>
-            <td><%= new Date(transaction.transaction_date).toLocaleDateString() %></td>
-            <td><button class="delete-btn" data-id="<%= transaction.transaction_id %>">Delete</button></td>
+            <td>
+              <%= new Date(transaction.transaction_date).toLocaleDateString() %>
+            </td>
+            <td>
+              <button
+                class="delete-btn"
+                data-id="<%= transaction.transaction_id %>"
+              >
+                Delete
+              </button>
+            </td>
           </tr>
           <% }) %>
         </tbody>
@@ -103,7 +134,9 @@
     </script>
     <script>
       const ctx = document.getElementById("transactionsChart").getContext("2d");
-      const transactions = JSON.parse(document.getElementById("transactions-data").textContent);
+      const transactions = JSON.parse(
+        document.getElementById("transactions-data").textContent
+      );
       const chartData = {
         labels: transactions.map((t) => t.description),
         datasets: [
@@ -134,10 +167,16 @@
       const btn = document.getElementById("addTransactionBtn");
       const span = document.querySelector(".close");
 
-      btn.onclick = () => { modal.style.display = "block"; };
-      span.onclick = () => { modal.style.display = "none"; };
+      btn.onclick = () => {
+        modal.style.display = "block";
+      };
+      span.onclick = () => {
+        modal.style.display = "none";
+      };
       window.onclick = (event) => {
-        if (event.target === modal) { modal.style.display = "none"; }
+        if (event.target === modal) {
+          modal.style.display = "none";
+        }
       };
 
       // Delete Transaction Logic
@@ -154,14 +193,39 @@
                   alert("Error deleting transaction.");
                 }
               })
-              .catch((err) => alert("Failed to delete transaction: " + err.message));
+              .catch((err) =>
+                alert("Failed to delete transaction: " + err.message)
+              );
           }
         });
       });
+//budget
+      const handleAddTransaction = (transaction) => {
+        axios
+          .post("/check-budget", {
+            userId: currentUser.id,
+            amount: transaction.amount,
+          })
+          .then((response) => {
+            if (response.data.overBudget) {
+              transaction.isOverBudget = true;
+              alert("This transaction exceeds your budget!");
+            } else {
+              transaction.isOverBudget = false;
+            }
+
+            saveTransaction(transaction); // This will save the transaction in your database
+          })
+          .catch((error) => {
+            console.error("Error checking budget:", error);
+            alert("An error occurred while checking your budget.");
+          });
+      };
     </script>
 
     <footer>
-      <a href="/savings">View Savings</a> | <a href="/debts">View Debts</a> | <a href="/logout">Logout</a>
+      <a href="/savings">View Savings</a> | <a href="/debts">View Debts</a> |
+      <a href="/logout">Logout</a>
     </footer>
   </body>
 </html>

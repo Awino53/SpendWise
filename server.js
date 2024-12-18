@@ -155,8 +155,9 @@ app.get("/", (req, res) => {
   res.render("home");
 });
 
-// View Transactions
 
+
+// View Transactions
 // Add Transaction Page (GET request)
 app.get("/transactions", isAuthenticated, (req, res) => {
   const userId = req.session.userId;
@@ -165,6 +166,7 @@ app.get("/transactions", isAuthenticated, (req, res) => {
   const transactionQuery = "SELECT * FROM transactions WHERE user_id = ?";
   db.query(transactionQuery, [userId], (err, transactions) => {
     if (err) return res.status(500).send("Error fetching transactions.");
+    
 
     // Fetch debts
     const debtQuery =
@@ -195,7 +197,7 @@ app.post("/transactions", isAuthenticated, (req, res) => {
   // Validate type
   if (
     !type ||
-    !["EXPENSE", "INCOME", "SAVING", "DEBT"].includes(type.toUpperCase())
+    !["EXPENSE", "INCOME", "SAVING", "DEBT_PAYMENT"].includes(type.toUpperCase())
   ) {
     return res.status(400).send("Invalid transaction type.");
   }
@@ -224,7 +226,10 @@ app.post("/transactions", isAuthenticated, (req, res) => {
   query += ") VALUES (?, ?, ?, ?, ?, ?, ?)";
 
   db.query(query, params, (err) => {
-    if (err) return res.status(500).send("Error adding transaction.");
+    if (err){
+      console.error("error adding transaction:",err);
+    return res.status(500).send("Error adding transaction.");
+  }
     res.redirect("/transactions");
   });
 });
@@ -267,8 +272,7 @@ app.get("/debts", isAuthenticated, (req, res) => {
       t.transaction_date AS date
     FROM transactions t
     LEFT JOIN transactions tp 
-      ON t.transaction_id = tp.transaction_id 
-      AND tp.type = 'DEBT_PAYMENT'
+        ON t.transaction_id = tp.debt_id AND tp.type = 'DEBT_PAYMENT'
     WHERE t.user_id = ? AND t.type = 'DEBT'
     GROUP BY t.transaction_id;
   `;
