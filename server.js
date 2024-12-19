@@ -7,6 +7,7 @@ const bcrypt = require("bcrypt"); // Import bcrypt
 const SALT_ROUNDS = 10; // Define the number of salt rounds
 
 const session = require("express-session");
+const { error } = require("console");
 
 app.use(
   session({
@@ -26,7 +27,7 @@ const db = mysql.createConnection({
   host: "localhost",
   user: "root",
   password: "",
-  database: "WiseApp",
+  database: "tired2",
 });
 
 db.connect((err) => {
@@ -191,6 +192,7 @@ app.post("/transactions", isAuthenticated, (req, res) => {
     description,
     transaction_date,
     is_recurrent,
+    goal_id,
     debt_id,
   } = req.body;
 
@@ -216,6 +218,12 @@ app.post("/transactions", isAuthenticated, (req, res) => {
     transaction_date,
     is_recurrent || 0,
   ];
+
+  // If it's a saving, include goal_id in the query
+  if (type.toUpperCase() === "SAVING" && goal_id) {
+    query += ", goal_id";
+    params.push(goal_id);
+  }
 
   // If it's a debt payment, include debt_id in the query
   if (debt_id) {
@@ -248,40 +256,215 @@ app.delete("/transactions/:id", isAuthenticated, (req, res) => {
 });
 
 // View Savings
-app.get("/savings", isAuthenticated, (req, res) => {
+ 
+// Fetch savings and debts for charts
+app.get('/chart-data', async (req, res) => {
+  const savings = await db.query('SELECT description, amount FROM savings');
+  const debts = await db.query(
+    `SELECT name, 
+            amount AS original_amount, 
+            (amount - COALESCE((SELECT SUM(amount) FROM debt_payments WHERE debt_id = debts.id), 0)) AS remaining_balance 
+     FROM debts`
+  );
+
+  res.json({ savings, debts });
+});
+
+// Fetch goal-based savings for progress
+app.get("/api/savings/goals", isAuthenticated, (req, res) => {
   const userId = req.session.userId;
-  const query =
-    "SELECT * FROM transactions WHERE user_id = ? AND type = 'SAVING'";
+  /* const query = `
+    SELECT 
+      t.saving_goal_id,
+      sg.name AS goal_name,
+      sg.target_amount,
+      IFNULL(SUM(t.amount), 0) AS total_saved,
+      (sg.target_amount - IFNULL(SUM(t.amount), 0)) AS remaining_target
+    FROM saving_goals As sg
+    LEFT JOIN transactions t 
+        ON sg.saving_goal_id = t.goal_id AND t.type = 'SAVING'
+    WHERE sg.user_id = ?
+    GROUP BY sg.saving_goal_id;
+  `; */
+  const query = `
+  SELECT 
+    saving_goals.saving_goal_id,  
+    saving_goals.name AS goal_name,
+    saving_goals.target_amount,
+    IFNULL(SUM(t.amount), 0) AS total_saved,
+    (saving_goals.target_amount - IFNULL(SUM(t.amount), 0)) AS remaining_target
+  FROM saving_goals
+  LEFT JOIN transactions t 
+    ON saving_goals.saving_goal_id = t.goal_id AND t.type = 'SAVING'
+  WHERE saving_goals.user_id = ?
+  GROUP BY saving_goals.saving_goal_id;
+`;
+
   db.query(query, [userId], (err, results) => {
-    if (err) return res.status(500).send("Error fetching savings.");
-    const user = { fullName: req.session.userName }; // Add user data here
-    res.render("savings", { savings: results, user });
+    if (err) return res.status(500).send("Error fetching goal-based savings.");
+    res.json(results);
   });
 });
 
-// View Debts
-
-app.get("/debts", isAuthenticated, (req, res) => {
+// Fetch summary of savings
+app.get("/api/savings/summary", isAuthenticated, (req, res) => {
   const userId = req.session.userId;
+  const period = req.query.period || "MONTH"; // Default to monthly
+
   const query = `
     SELECT 
-      t.transaction_id,
-      t.description, 
-      t.amount, 
-      (t.amount - IFNULL(SUM(tp.amount), 0)) AS balance, 
-      t.transaction_date AS date
+      DATE_FORMAT(t.transaction_date, '%Y-%m') AS period,
+      SUM(t.amount) AS total_saved
+    FROM transactions  t
+    WHERE t.user_id = ? AND t.type = 'SAVING'
+    GROUP BY period;
+  `;
+
+  db.query(query, [userId], (err, results) => {
+    if (err) return res.status(500).send("Error fetching savings summary.");
+    res.json(results);
+  });
+});
+
+// Fetch savings page with goal and monthly savings
+app.get('/savings', isAuthenticated, async (req, res) => {
+  const userId = req.session.userId;
+  const user = { fullName: req.session.userName }; // Add user data
+  
+  
+  // Fetch savings toward goals
+  const goalSavingsQuery = `
+    SELECT 
+      sg.name AS goal_name,
+      IFNULL(SUM(t.amount), 0) AS total_saved
+    FROM saving_goals sg
+    LEFT JOIN transactions t 
+        ON sg.saving_goal_id = t.goal_id AND t.type = 'SAVING'
+    WHERE sg.user_id = ?
+    GROUP BY sg.saving_goal_id;
+  `;
+  const goalSavings = await db.query(goalSavingsQuery, [userId]);
+
+  // Fetch monthly savings summary
+  const monthlySavingsQuery = `
+    SELECT 
+      DATE_FORMAT(t.transaction_date, '%Y-%m') AS period,
+      SUM(t.amount) AS total_saved
     FROM transactions t
-    LEFT JOIN transactions tp 
-        ON t.transaction_id = tp.debt_id AND tp.type = 'DEBT_PAYMENT'
-    WHERE t.user_id = ? AND t.type = 'DEBT'
-    GROUP BY t.transaction_id;
+    WHERE t.user_id = ? AND t.type = 'SAVING'
+    GROUP BY period;
+  `;
+  const monthlySavings = await db.query(monthlySavingsQuery, [userId]);
+
+  // Fetch actual savings data
+  const savingsQuery = `
+    SELECT description, amount, DATE_FORMAT(transaction_date, '%Y-%m-%d') AS date
+    FROM transactions
+    WHERE user_id = ? AND type = 'SAVING'
+  `;
+  //const savings = await db.query(savingsQuery, [userId]);
+  //console.log(savings); // Check this output to verify it's an array
+  db.query(savingsQuery, [userId], (err, savings) => {
+    if (err) {
+      console.error('Error fetching individual savings:', err);
+      return res.status(500).send('Error fetching savings data');
+    }
+
+    // Check if savings is an array and has data
+    if (Array.isArray(savings) && savings.length > 0) {
+      res.render('savings', {
+        savings,
+        goalSavings,
+        monthlySavings,
+        user
+      });
+    } else {
+
+  res.render('savings', {
+    //savings: savings,
+    error:'no individual saving data found.',
+    goalSavings,
+    monthlySavings,
+    user // Pass user object to the view
+  });
+}
+
+ });
+ 
+});
+
+
+// View Debts
+//fetch debts with remaining balance
+app.get("/debts", isAuthenticated, (req, res) => {
+  const userId = req.session.userId;
+  const user = { fullName: req.session.userName }; // Add user data
+  const query = `
+     SELECT 
+        t.transaction_id AS id,
+        t.description AS name,
+        t.amount AS original_amount,
+        IFNULL(SUM(tp.amount), 0) AS total_repaid,
+        (t.amount - IFNULL(SUM(tp.amount), 0)) AS remaining_balance,
+        t.transaction_date
+      FROM transactions t
+      LEFT JOIN transactions tp 
+          ON t.transaction_id = tp.debt_id AND tp.type = 'DEBT_PAYMENT'
+      WHERE t.user_id = ? AND t.type = 'DEBT'
+      GROUP BY t.transaction_id;
   `;
 
   db.query(query, [userId], (err, results) => {
     if (err) return res.status(500).send("Error fetching debts.");
     console.log(results); // Add this line to log the results
-    const user = { fullName: req.session.userName }; // Include user data
-    res.render("debts", { debts: results, user });
+    //const user = { fullName: req.session.userName }; // Include user data
+    res.render("debts", { debts: results, user: user });
+  });
+});
+
+// Add new debt
+app.post('/debts', isAuthenticated, (req, res) => {
+  const { name, amount } = req.body;
+  const userId = req.session.userId;
+  const query = `
+    INSERT INTO transactions (user_id, description, amount, type, transaction_date)
+    VALUES (?, ?, ?, 'DEBT', NOW())
+  `;
+  
+  db.query(query, [userId, name, amount], (err) => {
+    if (err) return res.status(500).send("Error adding debt.");
+    res.redirect('/debts');
+  });
+});
+
+// Edit an existing debt
+app.post('/debts/:id', isAuthenticated, (req, res) => {
+  const { id } = req.params;
+  const { name, amount } = req.body;
+  const query = `
+    UPDATE transactions
+    SET description = ?, amount = ?
+    WHERE transaction_id = ? AND type = 'DEBT'
+  `;
+  
+  db.query(query, [name, amount, id], (err) => {
+    if (err) return res.status(500).send("Error updating debt.");
+    res.redirect('/debts');
+  });
+});
+
+// Add a debt payment
+app.post('/debts/:id/pay', isAuthenticated, (req, res) => {
+  const { id } = req.params;
+  const { amount } = req.body;
+  const query = `
+    INSERT INTO transactions (debt_id, amount, type, transaction_date)
+    VALUES (?, ?, 'DEBT_PAYMENT', NOW())
+  `;
+  
+  db.query(query, [id, amount], (err) => {
+    if (err) return res.status(500).send("Error making payment.");
+    res.redirect('/debts');
   });
 });
 
